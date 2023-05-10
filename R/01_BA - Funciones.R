@@ -8,7 +8,7 @@
 
 # 1. FUNCION PARA ESTABLECER PREREQUISITOS PARA EL MODELO
 
-  Setup <- function(df_Off, df_On, df_tr, W_sov, W_buz, W_soi, yr){
+Setup          <- function(df_Off, df_On, df_tr, W_sov, W_buz, W_soi, yr){
 
 
     # Activar paquetes
@@ -120,7 +120,7 @@
 
 # 2. MODELACION Y SELECCION DE INDEX DESEADO
 
-  Modelacion <- function(){
+Modelacion     <- function(){
 
     # Crear uan lista con los nombres de las marcas seleccionadas
     vector <- character(0)
@@ -170,7 +170,7 @@
 
 # 3. PREDICCIONES
 
-  Prediccion<- function(){
+Prediccion     <- function(){
 
     set.seed(1)                                           # Semilla para reproducir resultados
     index   <- as.numeric(index)                          # Index a numerico
@@ -210,7 +210,7 @@
   }
 
 # 4. BUDGET ADVISOR
-  BudgetAdvisor <- function(){
+BudgetAdvisor  <- function(){
     Modelacion()
     Prediccion()
   }
