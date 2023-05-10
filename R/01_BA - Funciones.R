@@ -36,7 +36,7 @@ Setup          <- function(df_Off, df_On, df_tr, W_sov, W_buz, W_soi, yr){
 
     # Se agrupa la base Off a mes (esta en semanas)
     df_Off <- na_replace(df_Off, 0)
-    df_Off <<- data.table(df_Off)
+    df_Off <- data.table(df_Off)
     df_Off <- df_Off[, .(Investment_Off = sum(Investment_Off), GRPS = sum(GRPS)), by = .(Year, Month, Brand)][order(Year, Month, Brand)]
 
     # Merge para sumar inversiones
