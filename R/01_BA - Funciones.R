@@ -22,6 +22,7 @@ Setup          <- function(df_Off, df_On, df_tr, W_sov, W_buz, W_soi, yr){
     library(data.table)
     library(imputeTS)
     library(ggplot2)
+    usethis::use_data_table(BudgetAdvisor)
 
 
 # Combinar Medios Off y On para tener Inversion total
@@ -34,10 +35,11 @@ Setup          <- function(df_Off, df_On, df_tr, W_sov, W_buz, W_soi, yr){
     df_On$Brand  <- toupper(df_On$Brand)
 
 
-    # Se agrupa la base Off a mes (esta en semanas)
+    # Se agrupa la base Off a mes (aveces esta en semanas)
     df_Off <- na_replace(df_Off, 0)
     df_Off <- data.table(df_Off)
-    df_Off <- df_Off[, list(Investment_Off = sum(Investment_Off), GRPS = sum(GRPS)), by = .(Year, Month, Brand)][order(Year, Month, Brand)]
+    df_Off <- df_Off[, list(df_Off$Investment_Off = sum(Investment_Off),
+                            GRPS = sum(GRPS)), by = .(Year, Month, Brand)][order(Year, Month, Brand)]
 
     # Merge para sumar inversiones
     df_OnOff <- merge(x = df_Off , y = df_On, by = c("Year", "Month", "Brand"), all = TRUE)
