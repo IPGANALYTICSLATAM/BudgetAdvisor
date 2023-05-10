@@ -22,7 +22,7 @@ Setup          <- function(df_Off, df_On, df_tr, W_sov, W_buz, W_soi, yr){
     library(data.table)
     library(imputeTS)
     library(ggplot2)
-    usethis::use_data_table(BudgetAdvisor)
+    usethis::use_data_table()
 
 
 # Combinar Medios Off y On para tener Inversion total
