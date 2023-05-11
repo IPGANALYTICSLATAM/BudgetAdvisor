@@ -8,7 +8,7 @@
 
 # 1. FUNCION PARA ESTABLECER PREREQUISITOS PARA EL MODELO
 
-Setup          <- function(df_Off, df_On, df_tr, W_sov, W_buz, W_soi, yr){
+Setup <- function(df_Off, df_On, df_tr, W_sov, W_buz, W_soi, yr){
 
 
     # Activar paquetes
@@ -22,7 +22,6 @@ Setup          <- function(df_Off, df_On, df_tr, W_sov, W_buz, W_soi, yr){
     library(data.table)
     library(imputeTS)
     library(ggplot2)
-    usethis::use_data_table()
 
 
 # Combinar Medios Off y On para tener Inversion total
@@ -122,7 +121,7 @@ Setup          <- function(df_Off, df_On, df_tr, W_sov, W_buz, W_soi, yr){
 
 # 2. MODELACION Y SELECCION DE INDEX DESEADO
 
-Modelacion     <- function(){
+Modelacion <- function(){
 
     # Crear uan lista con los nombres de las marcas seleccionadas
     vector <- character(0)
@@ -172,7 +171,7 @@ Modelacion     <- function(){
 
 # 3. PREDICCIONES
 
-Prediccion     <- function(){
+Prediccion <- function(){
 
     set.seed(1)                                           # Semilla para reproducir resultados
     index   <- as.numeric(index)                          # Index a numerico
@@ -212,7 +211,7 @@ Prediccion     <- function(){
   }
 
 # 4. BUDGET ADVISOR
-BudgetAdvisor  <- function(){
+BudgetAdvisor <- function(){
     Modelacion()
     Prediccion()
   }
