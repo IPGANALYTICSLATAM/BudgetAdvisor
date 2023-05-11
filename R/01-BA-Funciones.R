@@ -210,5 +210,9 @@ Prediccion <- function(){
     cat("\n>>> LA DATA FUE GUARDADA EN EL EXCEL Predictions.xlsx")
   }
 
-
+# 4. BUDGET ADVISOR
+BudgetAdvisor <- function(){
+  Modelacion()
+  Prediccion()
+}
 
