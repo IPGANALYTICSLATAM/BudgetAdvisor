@@ -11,7 +11,7 @@
 Setup <- function(df_Off, df_On, df_tr, W_sov, W_buz, W_soi, yr){
 
 
-    # Activar paquetes
+# Activar paquetes
     library(devtools)
     library(MASS)
     library(reshape)
@@ -51,7 +51,7 @@ Setup <- function(df_Off, df_On, df_tr, W_sov, W_buz, W_soi, yr){
 
 
 
-# Ordenar base de trends y generar SOV
+# Base de trends
 
     # Borrar variable semana de trends
     df_tr <- df_tr[ , !(names(df_tr) %in% c("Week","X"))]
@@ -210,9 +210,5 @@ Prediccion <- function(){
     cat("\n>>> LA DATA FUE GUARDADA EN EL EXCEL Predictions.xlsx")
   }
 
-# 4. BUDGET ADVISOR
-BudgetAdvisor <- function(){
-    Modelacion()
-    Prediccion()
-  }
+
 
