@@ -71,12 +71,11 @@ Setup <- function(df_Off, df_On, df_tr, W_sov, W_buz, W_soi, yr){
     df_join[is.na(df_join)] = 0
 
     # Crear SOV, SOI y trend
-    df_join <- df_join[, .(Brand,
-                           Investment,
+    df_join <- df_join[, .(Investment,
                            SOI   = round(100*Investment /sum(Investment) , 1),
                            SOV   = round(100*GRPS       /sum(GRPS)       , 1),
                            Trend = round(100*Trend      /sum(Trend)      , 1)),
-                       by=.(Year, Month)]
+                       by=.(Year, Month, Brand)]
 
 
     # Generar Media Strategy Index
