@@ -1,0 +1,470 @@
+import tkinter as tk
+from tkinter import *
+from tkinter import filedialog
+from tkinter import ttk
+import customtkinter as ctk
+from sklearn.linear_model import LinearRegression
+import numpy as np
+import pandas as pd
+from PIL import Image, ImageTk
+import datatable as dt
+from datatable import (dt, f, by, ifelse, update, sort,
+                       count, min, max, mean, sum, rowsum, join, update)
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import FunctionTransformer
+import statsmodels.api as sm
+from matplotlib import pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from matplotlib.figure import Figure
+import pickle
+
+
+
+#-------------------------------------------------------------------------
+
+
+def Setup():
+
+    global df_Off
+    global df_On
+    global df_Tr
+    global df_km
+
+    yr = 2022
+
+    # No missings 
+    df_Off = df_Off.fillna(0)
+    df_On = df_On.fillna(0)
+
+    # Convertir la columna "BRAND" a mayúsculas
+    df_Off['Brand'] = df_Off['Brand'].str.upper()
+    df_On['Brand'] = df_On['Brand'].str.upper()
+
+    # Combinar Medios Off y On para tener Inversion total
+    df_Off = df_Off.loc[:,["Year", "Month", "Brand", "Investment_Off", "GRPS"]]
+    df_On  = df_On.loc[:,["Year", "Month", "Brand", "Investment_On"]]
+
+    # Se agrupa la base Off a mes (aveces esta en semanas)
+    df_Off = df_Off.groupby(["Year", "Month", "Brand"]).sum().reset_index()
+
+    # Merge para sumar inversiones
+    df_OffOn = df_Off.merge(df_On, on=("Year", "Month", "Brand"), how="outer")
+    df_OffOn = df_OffOn.fillna(0)
+    df_OffOn = df_OffOn.assign(Investment=df_OffOn['Investment_Off'] + df_OffOn['Investment_On'])
+
+    # Ordenar columnas
+    df_OffOn = df_OffOn[["Year","Month","Brand","Investment","GRPS"]]
+
+
+    #------------------------------------------------------------
+    # TRENDS
+
+    # Borrar variable semana de week si existe
+    cols = [col for col in ["Week", "Unnamed: 0"] if col in df_Tr.columns]
+    df_Tr = df_Tr.drop(cols, axis=1)
+
+    # Pivotear y agregar a nivel de mes
+    df_Tr = df_Tr.melt(id_vars=["Year","Month"], var_name="Brand", value_name="Tr") 
+    df_Tr = df_Tr.fillna(0)
+    df_Tr = df_Tr.groupby(["Year", "Month", "Brand"]).sum().reset_index()
+
+    # Merge
+    df_join = df_OffOn.merge(df_Tr, on = ('Year', 'Month','Brand'), how="outer")
+    df_join = df_join.fillna(0)
+
+    # Crear SOV, SOI y trend
+    df_join['SOI']   = df_join.groupby(['Year', 'Month'])['Investment'].transform(lambda x: x / x.sum() * 100)
+    df_join['SOV']   = df_join.groupby(['Year', 'Month'])['GRPS'].transform(lambda x: x / x.sum() * 100)
+    df_join['Trend'] = df_join.groupby(['Year', 'Month'])['Tr'].transform(lambda x: x / x.sum() * 100)
+    df_join = df_join.assign(Index = W_sov * df_join['SOV'] + 
+                                     W_soi * df_join['SOI'] +
+                                     W_buz * df_join["Trend"])
+
+    # BASE DE DATOS CON LA QUE SE CONTINUA 
+    global df_jn
+    df_jn = df_join
+
+
+    # Correlaciones entre INDEX e INVERSION de cada marca
+    leng = len(df_jn['Brand'].unique())
+    brands = []
+    obs = []
+    cors = []
+    n=1
+
+    # Solo se generan correlaciones para marcas con informacion para 8 o mas meses
+    for i in df_join["Brand"].unique():
+        df_br = df_jn.loc[df_jn["Brand"] == i]
+        if len(df_br) > 7:
+            cor = df_br['Investment'].corr(df_br['Index']).round(1)
+        else:
+            next
+        cors.append(cor)
+        brands.append(i)
+        obs.append(len(df_br))
+        n=n+1
+
+    df_tab1 = pd.DataFrame({'Brands': brands, 'Observations': obs, 'Correlations': cors})
+    
+    # Imprimir en interfaz 
+    textbox = ctk.CTkTextbox(fr2, fg_color="black", text_color = "yellow", width=380, height=150, 
+                             font = ("Courier new", 12))
+    textbox.grid(row=3, column=0, columnspan=3)
+    textbox.insert("0.0", df_tab1)
+    
+    
+    #---------------------------------------------------------------------------
+    
+    
+    
+    def Modelacion():
+
+    global text_brands
+    text_brands = txt_brs.get() 
+    print("Brands SAVED!")  
+
+    # Crear lista con los nombres de las marcas seleccionadas
+    marcas_X = text_brands.split()
+
+    # Filtrar la base de datos para incluir solo las observaciones cuya marca está en el texto X
+    global df_model
+    df_model = df_jn[df_jn['Brand'].str.contains('|'.join(marcas_X))]
+    global X
+    X = df_model["Index"]
+    X = np.array(X).reshape(-1, 1)
+    global y
+    y = df_model['Investment'].apply(lambda x: x**(1/2))
+
+    reg = LinearRegression().fit(X, y)
+
+    # Tabla para elegir index para proyeccion
+    df_model = dt.Frame(df_model)
+    tab = df_model[:,{"Inv(M)" : sum(f.Investment)/1000000,          
+                      "SOV"        : mean(f.SOV),
+                      "SOI"        : mean(f.SOI),
+                      "Trend"      : mean(f.Trend),
+                      "Index"      : mean(f.Index)}, 
+                     by("Brand")][:,:,sort(-f.Index)]
+    
+    tab = tab[:, f[:].extend({'Optimal': dt.ifelse(
+        ((dt.f['SOV'] > dt.f['SOI']) | (dt.f['Trend'] > dt.f['SOI'])), "*", '')})]
+    tab = tab.to_pandas()
+    tab = tab.round(1)
+    tab["Inv(M)"] = tab["Inv(M)"].astype(int)
+    
+    tab.to_csv('Tab.csv')
+    
+    textbox2 = ctk.CTkTextbox(fr2, fg_color="black", text_color = "yellow", width=450, height=150, 
+                             font = ("Courier new", 12))
+    textbox2.grid(row=14, column=0, columnspan=3)
+    textbox2.insert("0.0", tab)
+    
+    
+    
+    
+    #----------------------------------------------------------------------------------
+    
+    
+    
+    
+    def Prediction():
+    
+    global index
+    index = txt_index.get() 
+    index = int(index)
+    print("Index SAVED!")  
+
+    
+    df_km['Total']=df_km['Total'].astype(float)
+    delta = 1 - df_km["Total"].mean()            # Cuanto le falta al indicador para tener media 1
+    df_km["Key"] = df_km["Total"] + delta        # Se suma delta para que indicador tenga media 1
+    Index = df_km["Key"]*index                   # Se crea vector con media = index que sigue meses clave
+    Index = np.array(Index).reshape(-1, 1)
+    
+    model      = sm.OLS(y, X)
+    pred       = model.fit().predict(Index)
+    intervals  = model.fit().get_prediction(Index).conf_int()
+    predictions  = pd.DataFrame({"Min(M)" : (intervals[:,0]* intervals[:,0])/1000000, 
+                                 "Predict(M)" : (pred*pred)/1000000,
+                                 "Max(M)" : (intervals[:,1]*intervals[:,1])/1000000 
+                                 }).round(0)
+    totals = predictions.sum()
+    predictions.loc["Total"] = totals
+    predictions = predictions.astype(int)
+    predictions.to_csv('Predictions.csv')
+    
+    textbox3 = ctk.CTkTextbox(fr3, fg_color="black", text_color = "yellow", width=300, height=60, 
+                             font = ("Courier new", 12))
+    textbox3.grid(row=4, column=0, columnspan=3)
+    textbox3.insert("0.0", predictions[-1:])
+    
+                    
+    # GRAFICA        
+    plt.style.use("dark_background")
+    months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Ago","Sep","oct","Nov","Dec"]
+    fig, ax = plt.subplots(figsize=(3.5, 2.5))
+    ax.plot(months, predictions["Predict(M)"][:-1], color = "y", linestyle='--', linewidth=0.7)
+    ax.fill_between(months, 
+                    (predictions["Min(M)"][:-1]), 
+                    (predictions["Max(M)"][:-1]), color = "lightblue", alpha=.1)
+    ax.grid(color='w', linestyle='dotted', linewidth=0.2)
+    for txt in range(0,len(months)):
+        ax.text(months[txt], 
+                predictions["Predict(M)"][:-1][txt], 
+                predictions["Predict(M)"][:-1][txt], 
+                horizontalalignment='left', color = "w", weight="bold", fontsize=8)
+
+    plt.xticks(fontsize=6)
+    plt.yticks(fontsize=6)
+    plt.xlabel('\n$\it{Month}$', fontsize=8)
+    plt.ylabel('$\it{Investment}$\n  (Millions)', fontsize=8)
+
+    canvas = FigureCanvasTkAgg(fig, master=fr3)
+    canvas.draw()
+    canvas.get_tk_widget().grid(row=2, column=0) #side=tk.TOP, fill=tk.BOTH, expand=1)
+
+
+
+
+
+#---------------------------------------------------------------------------
+
+
+BA = ctk.CTk()
+
+BA.title("Budget Advisor - IPG Mediabrands")
+BA.iconbitmap("LogoMBShort.ico")
+BA.geometry("1200x700") 
+BA.minsize(width=1200, height=700)
+BA.maxsize(width=1200, height=700)
+BA._set_appearance_mode("dark")
+ctk.set_default_color_theme("dark-blue")
+
+BA.grid_columnconfigure(0, weight=0)  
+BA.grid_columnconfigure(1, weight=1) 
+BA.grid_columnconfigure(2, weight=3)   
+
+#-------------------------------------------------------------
+df_Off = None
+df_On  = None
+df_Tr  = None
+df_km  = None
+
+#-------------------------------------------------------------
+# FUNCIONES 
+def import_dataOff():
+    file_path = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv"), ("Excel Files", "*.xlsx")])
+    if file_path.endswith('.csv'):
+            global df_Off
+            df_Off = pd.read_csv(file_path)
+            print("Imported Data Off")
+            
+def import_dataOn():
+    file_path = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv"), ("Excel Files", "*.xlsx")])
+    if file_path.endswith('.csv'):
+            global df_On
+            df_On = pd.read_csv(file_path)
+            print("Imported Data On")
+            
+def import_dataTr():
+    file_path = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv"), ("Excel Files", "*.xlsx")])
+    if file_path.endswith('.csv'):
+            global df_Tr
+            df_Tr = pd.read_csv(file_path)
+            print("Imported Data Tr")
+
+def import_dataKm():
+    file_path = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv"), ("Excel Files", "*.xlsx")])
+    if file_path.endswith('.csv'):
+            global df_km
+            df_km = pd.read_csv(file_path)
+            print("Imported Data Km")
+
+            
+    
+            
+def save_wsov():
+    global W_sov
+    W_sov = txt_wsov.get() 
+    W_sov = float(W_sov)
+    print("W-SOV SAVED!")    
+
+def save_wsoi():
+    global W_soi
+    W_soi = txt_wsoi.get() 
+    W_soi = float(W_soi)
+    print("W-SOI SAVED!")    
+
+def save_wtr():
+    global W_buz
+    W_buz = txt_tr.get()
+    W_buz = float(W_buz)
+    print("Trends SAVED!")    
+
+def save_index():
+    global index
+    index = txt_ind.get() 
+    index = float(index)
+    print("Index SAVED!")    
+
+               
+            
+#-------------------------------------------------------------
+# BACKGROUND
+add_bg = ImageTk.PhotoImage(Image.open("Background.jpg"), Image.LANCZOS)
+bg_label= tk.Label(BA, image=add_bg)
+bg_label.place(x=0, y=0, relwidth=1, relheight=1)
+
+
+
+#-------------------------------------------------------------
+# LOGO MB
+add_image = ImageTk.PhotoImage(Image.open("LogoMB.png").resize((179,29)), Image.LANCZOS)
+label_imagen = tk.Label(BA, image=add_image)
+label_imagen.grid(row=0, column=2, sticky="ne")
+
+
+
+#-------------------------------------------------------------
+# ESTILOS 
+
+st_lab1    = {"text_color" : "white", 
+           "bg_color" : "black", 
+           "fg_color" : "black",
+           "font" : ("Helvetica", 16, "bold")}
+
+st_lab2    = {"text_color" : "white", 
+           "bg_color" : "black", 
+           "fg_color" : "black",
+           "font" : ("Helvetica", 14)}
+
+st_lab3    = {"text_color" : "white", 
+           "bg_color" : "black", 
+           "fg_color" : "black",
+           "font" : ("Helvetica", 12, "italic")}
+
+st_ybtn    = {"width" : 100,
+           "fg_color" : "yellow", 
+           "text_color" : "black",
+           "font":("Helvetica", 12, "bold")}
+
+st_gbtn    = {"width" : 50,
+           "height" : 10,
+           "fg_color" : "#4C4B4B", 
+           "text_color" : "yellow",
+           "font":("Helvetica", 11, "bold")}
+
+
+#-------------------------------------------------------------
+# FRAME 1 : DATA AND PARAMETERS 
+
+fr1 = ctk.CTkFrame(BA, bg_color="black", fg_color="black") 
+fr1.grid(row=0, column=0, sticky='nswe', padx=20, pady=50)
+
+ 
+# DATA
+
+lb_dt = ctk.CTkLabel(fr1, text="DATA", **st_lab1)
+lb_dt = lb_dt.grid(row=0, column=0, pady=(10, 15), columnspan=3)
+
+btn_Off = ctk.CTkButton(fr1, text="DATA OFF",    command=import_dataOff, **st_ybtn)
+btn_Off = btn_Off.grid(row=1, column=0, pady=(0, 10), columnspan=3)
+btn_On  = ctk.CTkButton(fr1, text="DATA ON",     command=import_dataOn, **st_ybtn)
+btn_On = btn_On.grid(row=2, column=0, pady=(0, 10), columnspan=3)
+btn_Tr  = ctk.CTkButton(fr1, text="DATA TRENDS", command=import_dataTr, **st_ybtn)
+btn_Tr = btn_Tr.grid(row=3, column=0, pady=(0, 10), columnspan=3)
+btn_km  = ctk.CTkButton(fr1, text="KEY MONTHS", command=import_dataKm, **st_ybtn)
+btn_km = btn_km.grid(row=4, column=0, pady=(0, 30), columnspan=3)
+
+
+# PARAMETERS
+
+lb_pr = ctk.CTkLabel(fr1, text="PARAMETERS", **st_lab1)
+lb_pr = lb_pr.grid(row=5, column=0, pady=(10, 15), columnspan=3)
+
+
+lbl_wsov = ctk.CTkLabel(fr1, text="W-SOV:", **st_lab2)
+lbl_wsov = lbl_wsov.grid(row=6, column=0, padx=(10,10), pady=5)
+txt_wsov = tk.StringVar() 
+txb_wsov = ctk.CTkEntry(fr1, textvariable = txt_wsov, width =50, height = 1)
+txb_wsov = txb_wsov.grid(row=6, column=1, padx=5, pady=5)
+btn_wsov = ctk.CTkButton(fr1, text="OK", command=save_wsov, **st_gbtn)
+btn_wsov = btn_wsov.grid(row=6, column=2, padx=(10,10), pady=5)
+
+lbl_wsoi = ctk.CTkLabel(fr1, text="W-SOI:", **st_lab2)
+lbl_wsoi = lbl_wsoi.grid(row=7, column=0, padx=5, pady=5)
+txt_wsoi = tk.StringVar() 
+txb_wsoi = ctk.CTkEntry(fr1, textvariable = txt_wsoi, width =50, height = 1)
+txb_wsoi = txb_wsoi.grid(row=7, column=1, padx=5, pady=5)
+btn_wsoi = ctk.CTkButton(fr1, text="OK", command=save_wsoi, **st_gbtn)
+btn_wsoi = btn_wsoi.grid(row=7, column=2, padx=(10,10), pady=5)
+
+lbl_tr = ctk.CTkLabel(fr1, text="W-DBUZZ:", **st_lab2)
+lbl_tr = lbl_tr.grid(row=8, column=0, padx=(15,5), pady=5)
+txt_tr = tk.StringVar() 
+txb_tr = ctk.CTkEntry(fr1, textvariable = txt_tr, width =50, height = 1)
+txb_tr = txb_tr.grid(row=8, column=1, padx=5, pady=5)
+btn_tr = ctk.CTkButton(fr1, text="OK", command=save_wtr, **st_gbtn)
+btn_tr = btn_tr.grid(row=8, column=2, padx=(10,15), pady=5)
+
+lb_sum = ctk.CTkLabel(fr1, text="\n W-SOV + \n W-SOI + \n W-DBuzz = 1 \n\n", **st_lab3)
+lb_sum = lb_sum.grid(row=12, column=0, columnspan=3)
+
+btn_run1 = ctk.CTkButton(fr1, text="RUN!",  command=Setup, **st_ybtn)
+btn_run1 = btn_run1.grid(row=13, column=0, pady=(10, 30), columnspan=3) 
+
+
+
+
+#-------------------------------------------------------------
+# FRAME 2 : TABLE AND BRANDS SELECTION 
+fr2 = ctk.CTkFrame(BA, bg_color="black", fg_color="black") 
+fr2.grid(row=0, column=1, sticky='ns', padx=(5,5), pady=(50,10))
+
+lb_br = ctk.CTkLabel(fr2, text="BRANDS SELECTION", **st_lab1)
+lb_br = lb_br.grid(row=0, column=0, pady=(10, 10), columnspan=3, sticky='we')
+
+
+lbl_brs = ctk.CTkLabel(fr2, text="BRANDS:", **st_lab2)
+lbl_brs = lbl_brs.grid(row=10, column=0, padx=(35, 10), pady=(5, 5))
+txt_brs = tk.StringVar() 
+txb_brs = ctk.CTkEntry(fr2, textvariable = txt_brs, width =150, height = 30)
+txb_brs = txb_brs.grid(row=10, column=1, padx=(10, 10), pady=5)
+btn_run2 = ctk.CTkButton(fr2, text="RUN!", command=Modelacion,   **st_ybtn)
+btn_run2 = btn_run2.grid(row=10, column=2, padx=(10, 35), pady=(10, 10))
+
+
+lb_br3 = ctk.CTkLabel(fr2, text="INDEX SELECTION",**st_lab1)
+lb_br3 = lb_br3.grid(row=13, column=0, pady=(10, 10), columnspan=3)
+
+
+lbl_ind = ctk.CTkLabel(fr2, text="INDEX:", **st_lab2)
+lbl_ind = lbl_ind.grid(row=15, column=0, padx=(15, 10), pady=(5, 5))
+txt_index = tk.StringVar() 
+txb_ind = ctk.CTkEntry(fr2, textvariable = txt_index, width =100, height = 30)
+txb_ind = txb_ind.grid(row=15, column=1, padx=(10, 10), pady=5)
+btn_run3 = ctk.CTkButton(fr2, text="RUN!", command=Prediction, **st_ybtn) # 
+btn_run3 = btn_run3.grid(row=15, column=2, padx=(10, 35), pady=(10, 10))
+
+
+
+#-------------------------------------------------------------
+# FRAME 3 : PREDICTIONS
+
+fr3 = ctk.CTkFrame(BA, bg_color="black", fg_color="black", width=100, height = 100) 
+fr3.grid(row=0, column=2, sticky='ns', padx=(5,5), pady=(50,10))
+
+lb_pr = ctk.CTkLabel(fr3, text="RECOMENDATION NEXT 12 MONTHS", **st_lab1)
+lb_pr = lb_pr.grid(row=0, column=0, pady=(10, 10), padx=(80,80))
+
+lb_pr = ctk.CTkLabel(fr3, text="MARKET PROYECTION \n NEXT YEAR", **st_lab1)
+lb_pr = lb_pr.grid(row=8, column=0, pady=(10, 10))
+
+
+BA.mainloop() 
+    
+    
+    
+    
+    
+    
